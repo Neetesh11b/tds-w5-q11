@@ -13,7 +13,7 @@ async function callGroq(messages) {
             'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
         },
         body: JSON.stringify({
-            model: 'gemma2-9b-it',
+            model: 'llama-3.3-70b-versatile',
             messages,
             temperature: 0
         })
@@ -127,7 +127,7 @@ Return this exact JSON shape:
                 "ga5.run.id": runId,
                 "ga5.public.marker": publicMarker,
                 "gen_ai.operation.name": "chat",
-                "gen_ai.request.model": "gemma2-9b-it"
+                "gen_ai.request.model": "llama-3.3-70b-versatile"
             }
         }
     ];
