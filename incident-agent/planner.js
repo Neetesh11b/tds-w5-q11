@@ -2,62 +2,65 @@ const crypto = require('crypto');
 const { convertSpansToOtlp } = require('./trace');
 
 function makeId() {
-  return crypto.randomBytes(8).toString('hex');
+    return crypto.randomBytes(8).toString('hex');
 }
 
 async function callGroq(messages) {
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages,
-      temperature: 0
-    })
-  });
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: 'gemma2-9b-it',
+            messages,
+            temperature: 0
+        })
+    });
 
-  const data = await response.json();
+    const data = await response.json();
 
-  // Debug: agar choices nahi aaya to full response log karo
-  if (!data.choices || !data.choices[0]) {
-    console.error('GROQ RESPONSE ERROR:', JSON.stringify(data));
-    throw new Error('Groq API failed: ' + JSON.stringify(data));
-  }
+    // Debug: agar choices nahi aaya to full response log karo
+    if (!data.choices || !data.choices[0]) {
+        console.error('GROQ RESPONSE ERROR:', JSON.stringify(data));
+        throw new Error('Groq API failed: ' + JSON.stringify(data));
+    }
 
-  const text = data.choices[0].message.content;
-  const cleaned = text.replace(/```json|```/g, '').trim();
+    const text = data.choices[0].message.content;
+    const cleaned = text.replace(/```json|```/g, '').trim();
 
-  try {
-    return JSON.parse(cleaned);
-  } catch(e) {
-    console.error('JSON PARSE ERROR:', cleaned);
-    throw new Error('AI response was not valid JSON: ' + cleaned);
-  }
+    try {
+        return JSON.parse(cleaned);
+    } catch (e) {
+        console.error('JSON PARSE ERROR:', cleaned);
+        throw new Error('AI response was not valid JSON: ' + cleaned);
+    }
 }
 
 async function runPlanner(safeBody) {
-  const { runId, incident, toolCatalog, publicMarker, policy } = safeBody;
+    const { runId, incident, toolCatalog, publicMarker, policy } = safeBody;
 
-  // Parse traceparent if present
-  let traceId = crypto.randomBytes(16).toString('hex');
-  let parentSpanId = null;
-  if (safeBody.traceparent) {
-    const parts = safeBody.traceparent.split('-');
-    if (parts.length === 4 && parts[0] === '00') {
-      traceId = parts[1];
-      parentSpanId = parts[2];
+    // Parse traceparent if present
+    let traceId = crypto.randomBytes(16).toString('hex');
+    let parentSpanId = null;
+    if (safeBody.traceparent) {
+        const parts = safeBody.traceparent.split('-');
+        if (parts.length === 4 && parts[0] === '00') {
+            traceId = parts[1];
+            parentSpanId = parts[2];
+        }
     }
-  }
 
-  // Step 1 — AI se diagnosis + tool selection ek saath
-  const toolList = toolCatalog.map(t =>
-    `- ${t.name}: ${t.description} | schema: ${JSON.stringify(t.inputSchema)}`
-  ).join('\n');
-
-  const diagPrompt = `You are an incident diagnosis assistant. Return ONLY valid JSON, no markdown.
+    // Step 1 — AI se diagnosis + tool selection ek saath
+    const toolList = toolCatalog.map(t =>
+        `- ${t.name}: ${t.description} | schema: ${JSON.stringify(t.inputSchema)}`
+    ).join('\n');
+    // Transcript truncate karo — free tier ke liye
+    const transcript = incident.transcript.length > 4000
+        ? incident.transcript.substring(0, 4000) + '\n...[truncated]'
+        : incident.transcript;
+    const diagPrompt = `You are an incident diagnosis assistant. Return ONLY valid JSON, no markdown.
 
 Incident: ${incident.title}
 Service: ${incident.service}
@@ -93,116 +96,116 @@ Return this exact JSON shape:
   ]
 }`;
 
-  const plan = await callGroq([{ role: 'user', content: diagPrompt }]);
+    const plan = await callGroq([{ role: 'user', content: diagPrompt }]);
 
-  const diagnosis = {
-    rootCause: plan.rootCause,
-    evidence: plan.evidence
-  };
+    const diagnosis = {
+        rootCause: plan.rootCause,
+        evidence: plan.evidence
+    };
 
-  // Step 2 — Spans banao
-  const serverSpanId = crypto.randomBytes(8).toString('hex');
-  const agentSpanId = crypto.randomBytes(8).toString('hex');
-  const chatSpanId = crypto.randomBytes(8).toString('hex');
+    // Step 2 — Spans banao
+    const serverSpanId = crypto.randomBytes(8).toString('hex');
+    const agentSpanId = crypto.randomBytes(8).toString('hex');
+    const chatSpanId = crypto.randomBytes(8).toString('hex');
 
-  const spans = [
-    {
-      traceId, spanId: serverSpanId,
-      parentSpanId: parentSpanId || undefined,
-      name: "POST /v2/incidents", kind: 2,
-      attributes: { "ga5.run.id": runId, "ga5.public.marker": publicMarker }
-    },
-    {
-      traceId, spanId: agentSpanId, parentSpanId: serverSpanId,
-      name: "invoke_agent incident-response", kind: 1,
-      attributes: { "ga5.run.id": runId, "ga5.public.marker": publicMarker }
-    },
-    {
-      traceId, spanId: chatSpanId, parentSpanId: agentSpanId,
-      name: "chat incident-plan", kind: 3,
-      attributes: {
-        "ga5.run.id": runId,
-        "ga5.public.marker": publicMarker,
-        "gen_ai.operation.name": "chat",
-        "gen_ai.request.model": "llama-3.1-8b-instant"
-      }
+    const spans = [
+        {
+            traceId, spanId: serverSpanId,
+            parentSpanId: parentSpanId || undefined,
+            name: "POST /v2/incidents", kind: 2,
+            attributes: { "ga5.run.id": runId, "ga5.public.marker": publicMarker }
+        },
+        {
+            traceId, spanId: agentSpanId, parentSpanId: serverSpanId,
+            name: "invoke_agent incident-response", kind: 1,
+            attributes: { "ga5.run.id": runId, "ga5.public.marker": publicMarker }
+        },
+        {
+            traceId, spanId: chatSpanId, parentSpanId: agentSpanId,
+            name: "chat incident-plan", kind: 3,
+            attributes: {
+                "ga5.run.id": runId,
+                "ga5.public.marker": publicMarker,
+                "gen_ai.operation.name": "chat",
+                "gen_ai.request.model": "gemma2-9b-it"
+            }
+        }
+    ];
+
+    // Step 3 — Dispatches + spans per tool
+    const dispatches = [];
+    const executeToolSpanIds = []; // join ke liye
+
+    for (const tool of plan.diagnosticTools) {
+        const actionId = makeId();
+        const callId = actionId;
+        const toolInternalSpanId = crypto.randomBytes(8).toString('hex');
+        const toolClientSpanId = crypto.randomBytes(8).toString('hex');
+
+        executeToolSpanIds.push(toolInternalSpanId);
+
+        dispatches.push({
+            actionId,
+            callId,
+            phase: "diagnostic",
+            toolName: tool.toolName,
+            arguments: tool.arguments,
+            evidence: tool.evidence,
+            attempt: 1,
+            traceparent: `00-${traceId}-${toolClientSpanId}-01`
+        });
+
+        spans.push({
+            traceId, spanId: toolInternalSpanId, parentSpanId: agentSpanId,
+            name: `execute_tool ${tool.toolName}`, kind: 1,
+            attributes: {
+                "ga5.run.id": runId,
+                "ga5.public.marker": publicMarker,
+                "ga5.action.id": actionId,
+                "gen_ai.tool.name": tool.toolName,
+                "gen_ai.tool.call.id": callId,
+                "gen_ai.operation.name": "execute_tool"
+            }
+        });
+
+        spans.push({
+            traceId, spanId: toolClientSpanId, parentSpanId: toolInternalSpanId,
+            name: `POST tool/${tool.toolName}`, kind: 3,
+            attributes: {
+                "ga5.run.id": runId,
+                "ga5.public.marker": publicMarker,
+                "ga5.action.id": actionId,
+                "ga5.attempt": 1,
+                "http.request.method": "POST",
+                "http.request.resend_count": 0
+            }
+        });
     }
-  ];
 
-  // Step 3 — Dispatches + spans per tool
-  const dispatches = [];
-  const executeToolSpanIds = []; // join ke liye
+    // Step 4 — Join span (agar 2+ diagnostic tools parallel hain)
+    if (dispatches.length > 1) {
+        const joinSpanId = crypto.randomBytes(8).toString('hex');
+        spans.push({
+            traceId, spanId: joinSpanId, parentSpanId: agentSpanId,
+            name: "incident.join", kind: 1,
+            attributes: { "ga5.run.id": runId, "ga5.public.marker": publicMarker },
+            links: executeToolSpanIds.map(sid => ({ traceId, spanId: sid }))
+        });
+    }
 
-  for (const tool of plan.diagnosticTools) {
-    const actionId = makeId();
-    const callId = actionId;
-    const toolInternalSpanId = crypto.randomBytes(8).toString('hex');
-    const toolClientSpanId = crypto.randomBytes(8).toString('hex');
-
-    executeToolSpanIds.push(toolInternalSpanId);
-
-    dispatches.push({
-      actionId,
-      callId,
-      phase: "diagnostic",
-      toolName: tool.toolName,
-      arguments: tool.arguments,
-      evidence: tool.evidence,
-      attempt: 1,
-      traceparent: `00-${traceId}-${toolClientSpanId}-01`
-    });
-
-    spans.push({
-      traceId, spanId: toolInternalSpanId, parentSpanId: agentSpanId,
-      name: `execute_tool ${tool.toolName}`, kind: 1,
-      attributes: {
-        "ga5.run.id": runId,
-        "ga5.public.marker": publicMarker,
-        "ga5.action.id": actionId,
-        "gen_ai.tool.name": tool.toolName,
-        "gen_ai.tool.call.id": callId,
-        "gen_ai.operation.name": "execute_tool"
-      }
-    });
-
-    spans.push({
-      traceId, spanId: toolClientSpanId, parentSpanId: toolInternalSpanId,
-      name: `POST tool/${tool.toolName}`, kind: 3,
-      attributes: {
-        "ga5.run.id": runId,
-        "ga5.public.marker": publicMarker,
-        "ga5.action.id": actionId,
-        "ga5.attempt": 1,
-        "http.request.method": "POST",
-        "http.request.resend_count": 0
-      }
-    });
-  }
-
-  // Step 4 — Join span (agar 2+ diagnostic tools parallel hain)
-  if (dispatches.length > 1) {
-    const joinSpanId = crypto.randomBytes(8).toString('hex');
-    spans.push({
-      traceId, spanId: joinSpanId, parentSpanId: agentSpanId,
-      name: "incident.join", kind: 1,
-      attributes: { "ga5.run.id": runId, "ga5.public.marker": publicMarker },
-      links: executeToolSpanIds.map(sid => ({ traceId, spanId: sid }))
-    });
-  }
-
-  return {
-    runId,
-    status: "waiting",
-    diagnosis,
-    dispatches,
-    approvals: [],
-    actionLog: [],
-    receiptLog: [],
-    otlp: { resourceSpans: [{ scopeSpans: [{ spans: convertSpansToOtlp(spans) }] }] },
-    _traceId: traceId,
-    _agentSpanId: agentSpanId,
-    _spans: spans
-  };
+    return {
+        runId,
+        status: "waiting",
+        diagnosis,
+        dispatches,
+        approvals: [],
+        actionLog: [],
+        receiptLog: [],
+        otlp: { resourceSpans: [{ scopeSpans: [{ spans: convertSpansToOtlp(spans) }] }] },
+        _traceId: traceId,
+        _agentSpanId: agentSpanId,
+        _spans: spans
+    };
 }
 
 module.exports = { runPlanner };
