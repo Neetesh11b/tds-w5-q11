@@ -1,0 +1,13 @@
+{
+  "receiptId": "rcpt001",
+  "outcomes": [
+    {
+      "actionId": "b0ec782718033ebe",
+      "callId": "b0ec782718033ebe",
+      "attempt": 1,
+      "status": 200,
+      "resultClass": "diagnosis_confirmed",
+      "nonce": "abc-123-nonce"
+    }
+  ]
+}

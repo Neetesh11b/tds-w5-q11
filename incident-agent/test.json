@@ -1,0 +1,24 @@
+{
+  "profile": "ga5-incident-agent/v2",
+  "runId": "test123",
+  "agentName": "incident-response",
+  "publicMarker": "safe-marker-1",
+  "sensitive": { "accessToken": "xxx", "privateNote": "xxx" },
+  "incident": {
+    "incidentId": "inc001",
+    "title": "Service down",
+    "service": "checkout",
+    "severity": "SEV-1",
+    "transcript": "[ev_001] CPU spiked to 100%\n[ev_002] deploy happened at 10am\n[ev_003] customer said it is slow",
+    "allowedRootCauses": ["bad_deploy", "high_cpu", "network_issue"]
+  },
+  "toolCatalog": [
+    { "name": "query_metrics", "description": "check cpu/memory", "inputSchema": {} }
+  ],
+  "policy": {
+    "maximumDiagnostics": 3,
+    "effectTools": ["scale_service"],
+    "approvalRequiredFor": ["rollback_deployment", "disable_feature"],
+    "doNotExport": ["accessToken"]
+  }
+}
