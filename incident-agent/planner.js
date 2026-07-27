@@ -18,10 +18,24 @@ async function callGroq(messages) {
       temperature: 0
     })
   });
+
   const data = await response.json();
+
+  // Debug: agar choices nahi aaya to full response log karo
+  if (!data.choices || !data.choices[0]) {
+    console.error('GROQ RESPONSE ERROR:', JSON.stringify(data));
+    throw new Error('Groq API failed: ' + JSON.stringify(data));
+  }
+
   const text = data.choices[0].message.content;
   const cleaned = text.replace(/```json|```/g, '').trim();
-  return JSON.parse(cleaned);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch(e) {
+    console.error('JSON PARSE ERROR:', cleaned);
+    throw new Error('AI response was not valid JSON: ' + cleaned);
+  }
 }
 
 async function runPlanner(safeBody) {
