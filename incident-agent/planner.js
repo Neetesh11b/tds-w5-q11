@@ -1,3 +1,4 @@
+const { convertSpansToOtlp } = require('./trace');
 const crypto = require('crypto');
 
 function makeId() {
@@ -183,7 +184,7 @@ Return this exact JSON shape:
     approvals: [],
     actionLog: [],
     receiptLog: [],
-    otlp: { resourceSpans: [{ scopeSpans: [{ spans }] }] },
+    otlp: { resourceSpans: [{ scopeSpans: [{ spans: convertSpansToOtlp(spans) }] }] },
     _traceId: traceId,
     _agentSpanId: agentSpanId,
     _spans: spans

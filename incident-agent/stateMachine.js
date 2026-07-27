@@ -1,3 +1,4 @@
+const { convertSpansToOtlp } = require('./trace');
 const crypto = require('crypto');
 
 function makeId() {
@@ -110,7 +111,7 @@ function handleReceipt(currentState, receiptBody) {
         });
 
         state._spans = spans;
-        state.otlp = { resourceSpans: [{ scopeSpans: [{ spans }] }] };
+        state.otlp = { resourceSpans: [{ scopeSpans: [{ spans: convertSpansToOtlp(spans) }] }] };
         state.status = "waiting";
         delete state._pendingApprovals[appr.approvalId];
       }
