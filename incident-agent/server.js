@@ -25,12 +25,17 @@ app.post('/v2/incidents', async (req, res) => {
     }
 
     const { sensitive, ...safeForModel } = req.body;
-    const result = await runPlanner(safeForModel);
-    result._policy = req.body.policy;
-    result._service = req.body.incident?.service;
-    result._publicMarker = req.body.publicMarker;
-    db.saveRun(runId, bodyHash, result);
-    res.json(result);
+    try {
+        const result = await runPlanner(safeForModel);
+        result._policy = req.body.policy;
+        result._service = req.body.incident?.service;
+        result._publicMarker = req.body.publicMarker;
+        db.saveRun(runId, bodyHash, result);
+        res.json(result);
+    } catch (err) {
+        console.error('PLANNER ERROR:', err);
+        res.status(500).json({ error: err.message, stack: err.stack });
+    }
 });
 
 app.post('/v2/incidents/:runId/receipts', (req, res) => {
