@@ -1,5 +1,5 @@
-const { convertSpansToOtlp } = require('./trace');
 const crypto = require('crypto');
+const { convertSpansToOtlp } = require('./trace');
 
 function makeId() {
   return crypto.randomBytes(8).toString('hex');
